@@ -4,6 +4,14 @@ A quick and dirty renaming utility for cleaning up the output of tools like
 MakeMKV and [ARM][arm]. It helps you sensibly reorganize titles and ensure all
 episodes are sequentially ordered across discs.
 
+In addition to keeping a consistent episode counter between discs and titles,
+it also has utilities to exclude titles that are too short (e.g. special
+features) or too long (e.g. pseudo-titles for discs with a "play all" option).
+
+This utility doesn't actually make any changes to your media library. When an
+output directory is specified (`-o`), it prints out a series of `mv` commands
+which can be manually reviewed or `eval`'d.
+
 ## Installation
 
 Ensure you have the following installed:

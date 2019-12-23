@@ -4,6 +4,7 @@ import math
 import re
 import statistics
 import subprocess
+import sys
 
 from argparse import ArgumentParser
 from pathlib import Path
@@ -39,6 +40,7 @@ class Entry(object):
     def new(cls, abs_path: Path) -> 'Entry':
         rel_path = abs_path.relative_to(abs_path.parent.parent)
         stat = abs_path.stat()
+        print('checking: ', abs_path, file=sys.stderr)
         probe = ffprobe(abs_path)
 
         duration = float(probe['format']['duration'])
@@ -59,8 +61,8 @@ def scan(directory: Path) -> Iterable[Entry]:
         yield Entry.new(entry)
 
 
-
 T = TypeVar('T')
+
 
 def confidence_interval(
     entries: Iterable[T],
@@ -92,7 +94,7 @@ def ranged_float(v_min: float, v_max: float) -> float:
     def ret(v: str):
         f = float(v)
 
-        if f <= v_min:
+        if f < v_min:
             raise ValueError(
                 'value must be greater than {}: {}'.format(v_min, v)
             )
@@ -148,8 +150,8 @@ def main():
     parser.add_argument(
         '--confidence', '-z',
         default=0.5,
-        type=ranged_float(0.0, 0.99),
-        help='sets the confidence level for expected durations; 0.01-0.99'
+        type=ranged_float(0.0, 1),
+        help='sets the confidence level for expected durations; 0<x<1'
     )
     parser.add_argument(
         '--input-regex',
@@ -165,6 +167,18 @@ def main():
         '--output-format',
         help='python format-style string to override output filename; '
              'includes any captured groups from --input-regex'
+    )
+    parser.add_argument(
+        '--expect',
+        type=int,
+        help='expect some number of episodes; errors if final count does not '
+             'match'
+    )
+    parser.add_argument(
+        '--max',
+        action='store_true',
+        help='if set, also exclude excessively long episodes per the the '
+             '--confidence setting'
     )
 
     args = parser.parse_args()
@@ -193,32 +207,49 @@ def main():
     print('duration interval: {:.2f}min - {:.2f}min'.format(
         duration_lower / 60,
         duration_upper / 60
-    ))
+    ), file=sys.stderr)
     
     if args.min_duration:
         minimum_duration = humanfriendly.parse_timespan(args.min_duration)
         print(
             'user minimum size:',
-            humanfriendly.format_timespan(minimum_duration)
+            humanfriendly.format_timespan(minimum_duration),
+            file=sys.stderr
         )
     else:
         minimum_duration = duration_lower
         print(
             'calculated minimum size:',
-            humanfriendly.format_timespan(minimum_duration)
+            humanfriendly.format_timespan(minimum_duration),
+            file=sys.stderr
         )
 
     keep = [e for e in files if e.duration >= minimum_duration]
+
+    if args.max:
+        print(
+            'excluding titles longer than',
+            humanfriendly.format_timespan(duration_upper),
+            file=sys.stderr
+        )
+        keep = [e for e in keep if e.duration <= duration_upper]
+
     for i, entry in enumerate(keep):
         print('{:3} {} {}'.format(
             i + 1,
             entry.rel_path,
-            humanfriendly.format_timespan(entry.duration, max_units=1)
-        ))
+            humanfriendly.format_timespan(entry.duration, max_units=2)
+        ), file=sys.stderr)
     
-    print('keep count:', len(keep))
+    print('keep count:', len(keep), file=sys.stderr)
 
-    print('\n---\n')
+    if args.expect is not None and args.expect != len(keep):
+        print('error: expected {} episodes but found {}'.format(
+            args.expect, len(keep)
+        ), file=sys.stderr)
+        sys.exit(1)
+
+    print('\n---\n', file=sys.stderr)
 
     if args.input_regex:
         input_regex = re.compile(args.input_regex)
@@ -275,9 +306,6 @@ def main():
         print('mv \'{}\' \'{}\''.format(
             str(src), str(dest)
         ))
-
-
-
 
 
 if __name__ == '__main__':
